@@ -1,54 +1,20 @@
 # 🎵 音乐上传扩展
 
-酒馆扩展 — 让所有用户上传 MP3 到你的图床账户，共享歌单，悬浮球遥控播放。
+酒馆扩展 — 所有用户共享歌单，MP3 上传到同一账户。
 
-## 📦 安装（2 步）
+## 安装
 
-### 1. 安装前端 UI
-
-酒馆 → 扩展管理 → 安装扩展 → 输入 URL：
-
+### 1. 安装 UI
+酒馆扩展面板 → 粘贴 URL：
 ```
-https://github.com/tatyana20001013UWU/-1.git
+https://gitee.com/tatyana1013/zigetuirouyinyueshangchuan.git
 ```
 
-刷新页面 → 🎵 悬浮球出现。
+### 2. 安装代理
+`plugin.cjs` → `plugins/music-upload/index.cjs`  
+`config.yaml` 加 `enableServerPlugins: true`  
+重启酒馆
 
-### 2. 安装服务端代理
+## 共享歌单
 
-把 `plugin.cjs` 复制到酒馆的 `plugins/music-upload/index.cjs`，并在 `config.yaml` 中启用：
-
-```yaml
-enableServerPlugins: true
-```
-
-**重启酒馆**。服务端日志显示 `[音乐代理] ✅ http://127.0.0.1:3457` 即成功。
-
----
-
-## 🏗️ 架构
-
-```
-浏览器 (酒馆页面)
-  │  FormData
-  ▼
-127.0.0.1:3457  ← 服务端插件自启动
-  │  转发
-  ▼
-playground.z.wiki
-```
-
-| 文件 | 作用 |
-|------|------|
-| `inject.js` | 前端 — 悬浮球 + 上传面板 + 共享歌单 |
-| `plugin.cjs` | 服务端 — 代理服务器 (自启动) |
-| `manifest.json` | 酒馆识别用 |
-
----
-
-## 🎨 功能
-
-- 🎵 **悬浮球** — 可拖拽，播放/暂停/切歌/音量
-- 📤 **上传面板** — 点击/拖拽上传，队列管理
-- 🎶 **共享歌单** — 所有用户上传的歌曲集中展示，一键播放/删除
-- 🔌 **127.0.0.1 代理** — 绕过 API 白名单限制
+歌单文件 `songs.json` 存在 API 上，人人上传/删除都会同步。打开面板看到的是所有人的上传记录。
