@@ -1,9 +1,0 @@
-{
-  "name": "音乐上传管理",
-  "display_name": "🎵 音乐上传管理",
-  "version": "1.0.0",
-  "description": "支持 MP3/WAV/OGG/FLAC 上传、歌单管理、悬浮球播放器。服务端代理上传到 playground.z.wiki。",
-  "author": "tatyana",
-  "license": "MIT",
-  "main": "index.js"
-}

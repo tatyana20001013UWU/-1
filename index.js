@@ -198,67 +198,9 @@ function reportFailure(text) {
 }
 
 // ============================================================
-// HTML 注入中间件 — 将前端脚本注入酒馆页面（尽力而为）
-// 如果酒馆启用了压缩中间件，此注入可能不生效
-// 备选方案：用户手动添加 <script src="/api/plugins/music/inject.js"></script>
-//          或访问 /api/plugins/music/panel 独立面板
-// ============================================================
-function injectMiddleware(req, res, next) {
-  // 只拦截 HTML 页面的 GET 请求，跳过 API 和静态资源
-  const ct = res.getHeader("Content-Type") || res.getHeader("content-type") || "";
-  if (req.method !== "GET" || ct.includes("json") || ct.includes("javascript") ||
-      ct.includes("css") || ct.includes("image") || ct.includes("font") ||
-      req.path.startsWith("/api/") || req.path.startsWith("/css/") ||
-      req.path.startsWith("/scripts/") || req.path.startsWith("/fonts/") ||
-      req.path.startsWith("/images/") || req.path.startsWith("/img/")) {
-    return next();
-  }
-
-  const _write = res.write.bind(res);
-  const _end = res.end.bind(res);
-  const chunks = [];
-  let hijacked = false;
-
-  res.write = function (chunk, encoding, callback) {
-    hijacked = true;
-    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
-    return true;
-  };
-
-  res.end = function (chunk, encoding, callback) {
-    if (!hijacked) {
-      // 没有调用过 write，直接 end — 可能是静态文件
-      return _end(chunk, encoding, callback);
-    }
-    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
-    try {
-      const body = Buffer.concat(chunks).toString("utf8");
-      if (body.includes("</body>")) {
-        const injectTag = '<script src="/api/plugins/music/inject.js"></script>';
-        const modified = body.replace("</body>", injectTag + "\n</body>");
-        res.write = _write;
-        res.end = _end;
-        return _end(modified, "utf8", callback);
-      }
-    } catch (e) {
-      // 二进制内容，跳过
-    }
-    // 回退
-    res.write = _write;
-    res.end = _end;
-    const buf = Buffer.concat(chunks);
-    return _end(buf, encoding, callback);
-  };
-
-  next();
-}
-
-// ============================================================
 // Express 路由注册
 // ============================================================
 function registerRoutes(app) {
-  // ── 注入中间件（尝试自动注入前端脚本）──
-  app.use(injectMiddleware);
 
   // ── 上传: POST /api/plugins/music/upload ──
   // Body: JSON { file: "<base64>", name: "song.mp3" }
@@ -640,12 +582,11 @@ function registerRoutes(app) {
   });
 
   console.log("[音乐扩展] 路由已注册:");
-  console.log("  POST   /api/plugins/music/upload        — 上传音乐 (JSON: {file: base64, name: string})");
+  console.log("  POST   /api/plugins/music/upload        — 上传音乐");
   console.log("  DELETE /api/plugins/music/delete?id=xxx — 删除音乐");
   console.log("  GET    /api/plugins/music/list          — 获取歌单");
-  console.log("  GET    /api/plugins/music/inject.js     — 前端注入脚本");
-  console.log("  GET    /api/plugins/music/panel         — 独立管理面板");
-  console.log("  (已启用 HTML 自动注入中间件)");
+  console.log("  GET    /api/plugins/music/inject.js     — 前端脚本");
+  console.log("  GET    /api/plugins/music/panel         — 独立面板");
 }
 
 // ============================================================
@@ -653,8 +594,13 @@ function registerRoutes(app) {
 // ============================================================
 function init(app) {
   console.log("[音乐扩展] ================================");
-  console.log("[音乐扩展] 音乐上传扩展 v1.0 已加载");
+  console.log("[音乐扩展] 🎵 音乐上传扩展 v1.1 已加载");
   console.log("[音乐扩展] Token: " + TOKEN.substring(0, 10) + "...");
+  console.log("[音乐扩展] ================================");
+  console.log("[音乐扩展] ⚠️ 要让悬浮球显示，请在酒馆设置中添加一行：");
+  console.log('[音乐扩展]    <script src="/api/plugins/music/inject.js"></script>');
+  console.log("[音乐扩展]    路径: 酒馆设置 → 自定义代码 → 添加到 </body> 前");
+  console.log("[音乐扩展]    或直接访问面板: /api/plugins/music/panel");
   console.log("[音乐扩展] ================================");
 
   registerRoutes(app);
