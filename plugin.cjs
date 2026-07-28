@@ -43,14 +43,12 @@ function startProxy() {
 
         // 上传: POST — FormData 透明转发
         if (req.method === 'POST') {
-            // 从 URL 参数获取文件名
-            const q = url.parse(req.url, true).query;
-            const fileName = q.name || 'upload.mp3';
+            const queryTitle = url.parse(req.url, true).query.title || '';
             const chunks = [];
             req.on('data', c => chunks.push(c));
             req.on('end', () => {
                 const body = Buffer.concat(chunks);
-                console.log('[音乐代理] 上传 ' + fileName + ' ' + (body.length / 1024).toFixed(1) + 'KB');
+                console.log('[音乐代理] 上传 ' + (body.length / 1024).toFixed(1) + 'KB' + (queryTitle ? ' [' + queryTitle + ']' : ''));
                 const preq = https.request({
                     hostname: API_HOST, path: '/img/api/upload', method: 'POST',
                     headers: { 'Content-Type': req.headers['content-type'] || 'multipart/form-data', 'Content-Length': body.length },
@@ -67,8 +65,7 @@ function startProxy() {
                             const songUrl = dd.url || dd.link || (dd.data && (dd.data.url || dd.data.link)) || '';
                             if (songUrl) {
                                 const songs = loadSongs();
-                                const title = fileName.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').substring(0, 80);
-                                const song = { id: (dd.id || dd.uid || ('local_' + Date.now())), url: songUrl, title: title, size: body.length, uploadedAt: Date.now() };
+                                const song = { id: (dd.id || dd.uid || ('local_' + Date.now())), url: songUrl, title: queryTitle || songUrl.split('/').pop().replace(/\.[^.]+$/, ''), size: body.length, uploadedAt: Date.now() };
                                 if (!songs.some(s => s.url === song.url)) { songs.unshift(song); if (songs.length > 500) songs.length = 500; saveSongs(songs); }
                                 json._song = song;
                             }
