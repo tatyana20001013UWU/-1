@@ -1,9 +1,9 @@
 {
-  "display_name": "音乐上传管理器",
+  "name": "音乐上传管理",
+  "display_name": "🎵 音乐上传管理",
   "version": "1.0.0",
-  "description": "让其他用户上传MP3音乐到你的账户，并通过酒馆音频系统播放。管理歌单、悬浮球遥控播放。",
+  "description": "支持 MP3/WAV/OGG/FLAC 上传、歌单管理、悬浮球播放器。服务端代理上传到 playground.z.wiki。",
   "author": "tatyana",
-  "website": "https://github.com/tatyana20001013UWU/-1",
-  "requires": [],
-  "optional": false
+  "license": "MIT",
+  "main": "index.js"
 }
