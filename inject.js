@@ -36,9 +36,34 @@
   function SP(n) { var p = $("#mu-prog"); if (p) { p.style.display = "block"; $("#mu-pname").textContent = "上传中: " + n; } }
   function HP() { var p = $("#mu-prog"); if (p) p.style.display = "none"; }
 
-  // === 播放 ===
-  function play(url, title) { try { if (typeof playAudio === "function") { playAudio("bgm", { title: title, url: url }); ST.purl = url; ST.ptitle = title; ST.playing = true; UP(); } } catch (e) { } }
-  function tog() { try { if (ST.playing) { if (typeof pauseAudio === "function") pauseAudio("bgm"); ST.playing = false; } else if (ST.purl) play(ST.purl, ST.ptitle); UP(); } catch (e) { } }
+  // === 播放 (酒馆 API 优先, 原生 <audio> 兜底) ===
+  var _audio = null;
+  function getAudio() { if (!_audio) { _audio = new Audio(); _audio.volume = 0.8; } return _audio; }
+  function play(url, title) {
+    ST.purl = url; ST.ptitle = title; ST.playing = true;
+    // 尝试酒馆 API
+    var done = false;
+    try { if (typeof playAudio === "function") { playAudio("bgm", { title: title, url: url }); done = true; } } catch (e) { }
+    if (!done) { try { if (typeof TavernHelper !== "undefined" && TavernHelper.playAudio) { TavernHelper.playAudio("bgm", { title: title, url: url }); done = true; } } catch (e) { } }
+    // 兜底：原生 Audio
+    if (!done) {
+      var a = getAudio(); a.src = url; a.play().catch(function () { });
+      console.log("[音乐扩展] 使用原生 Audio 播放:", title);
+    }
+    UP();
+  }
+  function tog() {
+    if (ST.playing) {
+      var done = false;
+      try { if (typeof pauseAudio === "function") { pauseAudio("bgm"); done = true; } } catch (e) { }
+      if (!done) { try { if (typeof TavernHelper !== "undefined" && TavernHelper.pauseAudio) { TavernHelper.pauseAudio("bgm"); done = true; } } catch (e) { } }
+      if (!done && _audio) { _audio.pause(); }
+      ST.playing = false;
+    } else if (ST.purl) {
+      play(ST.purl, ST.ptitle);
+    }
+    UP();
+  }
   function UP() { if (_b) { _b.innerHTML = ST.playing ? "🎶" : "🎵"; _b.classList.toggle("playing", ST.playing); } if (_r) _r.classList.toggle("playing", ST.playing); if (_c) { var b = $(".mu-playbtn", _c); if (b) b.textContent = ST.playing ? "⏸" : "▶"; var t = $(".ctitle", _c); if (t) t.textContent = ST.ptitle || "未播放"; } RS(); }
 
   // === 样式 ===
