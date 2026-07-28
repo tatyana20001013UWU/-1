@@ -1,0 +1,7 @@
+{
+  "name": "音乐上传扩展",
+  "description": "上传 MP3 到图床并管理歌单，悬浮球遥控播放。服务端转发确保 127.0.0.1:8000 白名单兼容。",
+  "version": "1.1.0",
+  "author": "tatyana",
+  "entry": "index.js"
+}
