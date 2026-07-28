@@ -214,27 +214,21 @@
       return apiFetch("POST", "/upload", { file: base64, name: file.name });
     }).then(function (data) {
       hideUploadProgress();
+      _serverAvailable = true;
       if (data && data.success) {
-        if (data.warning) {
-          toast(data.warning, "warning");
-        } else {
-          toast("上传成功: " + (data.song ? data.song.title : file.name), "success");
-        }
+        if (data.warning) toast(data.warning, "warning");
+        else toast("上传成功: " + (data.song ? data.song.title : file.name), "success");
         fetchSongs();
-        // 加入酒馆播放列表
         if (data.song && data.song.url) {
-          try {
-            if (typeof appendAudioList === "function") {
-              appendAudioList("bgm", [{ title: data.song.title, url: data.song.url }]);
-            }
-          } catch (e) {}
+          try { if (typeof appendAudioList === "function") appendAudioList("bgm", [{ title: data.song.title, url: data.song.url }]); } catch (e) {}
         }
-      } else {
-        toast("上传失败: " + ((data && data.error) || "未知错误"), "error");
+        return data;
       }
+      throw new Error((data && data.error) || "服务器返回失败");
     }).catch(function (e) {
       hideUploadProgress();
-      toast("上传失败: " + e.message, "error");
+      // 重新抛出错误，让 smartUpload 的降级逻辑能捕获
+      throw e;
     });
   }
 
