@@ -13,6 +13,11 @@
   var BALL_SIZE = 44;
   var MAX_FILE_MB = 30;
   var ALLOWED_EXTS = [".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma"];
+  // 直传 API 密钥（服务端路由不可用时的降级方案）
+  var DIRECT_TOKEN = "sk_20260728_699d4929c1a448feb6c565e8dfbb3c3e";
+  var DIRECT_UPLOAD = "https://playground.z.wiki/img/api/upload";
+  var DIRECT_DELETE = "https://playground.z.wiki/img/delete";
+  var _serverAvailable = null; // null=未知, true=可用, false=不可用
 
   // ============================================================
   // 状态
@@ -68,7 +73,7 @@
   function escAttr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   // ============================================================
-  // API 通信
+  // API 通信 — 服务端优先，失败降级直传
   // ============================================================
   function apiFetch(method, endpoint, body) {
     var opts = { method: method, headers: {} };
@@ -76,28 +81,117 @@
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
     }
-    return fetch(API_BASE + endpoint, opts).then(function (r) { return r.json(); });
+    // 先试服务端路由
+    return fetch(API_BASE + endpoint, opts).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    });
+  }
+
+  /** 直传上传（绕过服务端，浏览器直接调 API） */
+  function directUpload(file, fileName) {
+    return readFileAsBase64(file).then(function (base64) {
+      var comma = base64.indexOf(",");
+      var raw = comma >= 0 ? base64.substring(comma + 1) : base64;
+      var binary = atob(raw);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      var fd = new FormData();
+      fd.append("file", new Blob([bytes], { type: file.type || "audio/mpeg" }), fileName);
+      fd.append("fileName", fileName);
+      fd.append("uid", DIRECT_TOKEN);
+
+      return fetch(DIRECT_UPLOAD, { method: "POST", body: fd }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+      });
+    });
+  }
+
+  /** 智能上传：服务端优先，失败自动降级直传 */
+  function smartUpload(file) {
+    showUploadProgress(file.name, "上传中(代理)...");
+    return uploadOneFile(file).catch(function () {
+      // 服务端不可用，降级直传
+      showUploadProgress(file.name, "上传中(直传)...");
+      console.log("[音乐扩展] 服务端路由不可用，降级为直传");
+      return directUpload(file, file.name).then(function (result) {
+        hideUploadProgress();
+        if (result.ok && result.data) {
+          var d = result.data;
+          var url = "", id = "";
+          if (d.data) { url = d.data.url || d.data.link || ""; id = d.data.id || d.data.uid || ""; }
+          if (!url && d.url) url = d.url;
+          if (!id && d.id) id = d.id;
+          if (url) {
+            var song = { id: id || ("direct_" + Date.now()), url: url,
+              title: file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ").substring(0, 80),
+              size: file.size, uploadedAt: Date.now() };
+            // 本地存储歌单
+            try {
+              var stored = JSON.parse(localStorage.getItem("mu_direct_songs") || "[]");
+              if (!stored.some(function (s) { return s.url === song.url; })) {
+                stored.unshift(song); if (stored.length > 500) stored.length = 500;
+                localStorage.setItem("mu_direct_songs", JSON.stringify(stored));
+              }
+            } catch (e) {}
+            toast("上传成功(直传): " + song.title, "success");
+            return { success: true, song: song };
+          }
+          toast("上传完成但未获取到链接", "warning");
+        } else {
+          toast("直传失败: " + ((result.data && result.data.message) || "未知错误"), "error");
+        }
+        return { success: false };
+      }).catch(function (e2) {
+        hideUploadProgress();
+        toast("上传失败: " + e2.message, "error");
+        return { success: false };
+      });
+    });
   }
 
   function fetchSongs() {
+    // 先试服务端
     return apiFetch("GET", "/list").then(function (data) {
+      _serverAvailable = true;
       _state.songs = (data && data.songs) ? data.songs : [];
       refreshSongListUI();
     }).catch(function (e) {
-      console.error("[音乐扩展] 获取歌单失败:", e);
+      console.log("[音乐扩展] 服务端歌单不可用，使用本地存储");
+      _serverAvailable = false;
+      try {
+        _state.songs = JSON.parse(localStorage.getItem("mu_direct_songs") || "[]");
+      } catch (ex) { _state.songs = []; }
+      refreshSongListUI();
     });
   }
 
   function deleteSongFromAPI(song) {
     if (!confirm("确定删除 \"" + song.title + "\" 吗？")) return;
     var id = song.id || "";
+
+    function removeLocal() {
+      _state.songs = _state.songs.filter(function (s) { return s.id !== id; });
+      try { localStorage.setItem("mu_direct_songs", JSON.stringify(_state.songs)); } catch (e) {}
+      refreshSongListUI();
+    }
+
+    // 试服务端删除
     apiFetch("DELETE", "/delete?id=" + encodeURIComponent(id))
-      .then(function (data) {
-        toast("已删除: " + song.title, "success");
-        fetchSongs();
-      })
-      .catch(function (e) {
-        toast("删除失败: " + e.message, "error");
+      .then(function () { toast("已删除: " + song.title, "success"); fetchSongs(); })
+      .catch(function () {
+        // 降级：如果是直传歌曲或 local_ 前缀，直接本地删除
+        if (id.startsWith("direct_") || id.startsWith("local_") || !_serverAvailable) {
+          removeLocal();
+          toast("已从本地移除: " + song.title, "info");
+        } else {
+          // 试直传删除 API
+          fetch(DIRECT_DELETE + "?id=" + encodeURIComponent(id) + "&uid=" + encodeURIComponent(DIRECT_TOKEN),
+            { method: "DELETE" })
+            .then(function () { removeLocal(); toast("已删除: " + song.title, "success"); })
+            .catch(function (e2) { removeLocal(); toast("已从本地移除（API删除失败）", "warning"); });
+        }
       });
   }
 
@@ -167,9 +261,8 @@
     if (_state.uploading || _state.uploadQueue.length === 0) return;
     _state.uploading = true;
     updateQueueUI();
-
     var file = _state.uploadQueue.shift();
-    uploadOneFile(file).finally(function () {
+    smartUpload(file).finally(function () {
       _state.uploading = false;
       updateQueueUI();
       processQueue();
