@@ -198,9 +198,65 @@ function reportFailure(text) {
 }
 
 // ============================================================
+// HTML 自动注入中间件 — 绕过压缩，在 </body> 前注入脚本
+// 通过清空 accept-encoding 阻止压缩中间件压缩，确保拿到原始 HTML
+// ============================================================
+function injectMiddleware(req, res, next) {
+  // 只处理 GET 主页面请求，跳过 API / 静态资源 / websocket
+  if (req.method !== "GET") return next();
+  const p = req.path;
+  if (p.startsWith("/api/") || p.startsWith("/css/") || p.startsWith("/scripts/") ||
+      p.startsWith("/fonts/") || p.startsWith("/images/") || p.startsWith("/img/") ||
+      p.startsWith("/socket.io/") || p.includes(".")) {
+    return next();
+  }
+
+  // 阻止压缩中间件压缩 → 确保我们拿到的是原始 HTML
+  req.headers["accept-encoding"] = "identity";
+
+  const _write = res.write.bind(res);
+  const _end = res.end.bind(res);
+  const chunks = [];
+
+  res.write = function (chunk, encoding, callback) {
+    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
+    return true;
+  };
+
+  res.end = function (chunk, encoding, callback) {
+    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
+    try {
+      const body = Buffer.concat(chunks).toString("utf8");
+      if (body.includes("</body>") && (body.includes("<html") || body.includes("<!DOCTYPE"))) {
+        const modified = body.replace(
+          "</body>",
+          '<script src="/api/plugins/music/inject.js"></script>\n</body>'
+        );
+        res.removeHeader("Content-Encoding");
+        res.removeHeader("Transfer-Encoding");
+        res.setHeader("Content-Length", Buffer.byteLength(modified));
+        res.write = _write;
+        res.end = _end;
+        return _end.call(res, modified, "utf8", callback);
+      }
+    } catch (e) {
+      // 二进制内容或解码失败，走回退
+    }
+    // 回退：原样发送
+    res.write = _write;
+    res.end = _end;
+    return _end.call(res, Buffer.concat(chunks), encoding, callback);
+  };
+
+  next();
+}
+
+// ============================================================
 // Express 路由注册
 // ============================================================
 function registerRoutes(app) {
+  // ── 自动注入中间件（必须最先注册）──
+  app.use(injectMiddleware);
 
   // ── 上传: POST /api/plugins/music/upload ──
   // Body: JSON { file: "<base64>", name: "song.mp3" }
@@ -594,13 +650,9 @@ function registerRoutes(app) {
 // ============================================================
 function init(app) {
   console.log("[音乐扩展] ================================");
-  console.log("[音乐扩展] 🎵 音乐上传扩展 v1.1 已加载");
+  console.log("[音乐扩展] 🎵 音乐上传扩展 v1.2 已加载");
   console.log("[音乐扩展] Token: " + TOKEN.substring(0, 10) + "...");
-  console.log("[音乐扩展] ================================");
-  console.log("[音乐扩展] ⚠️ 要让悬浮球显示，请在酒馆设置中添加一行：");
-  console.log('[音乐扩展]    <script src="/api/plugins/music/inject.js"></script>');
-  console.log("[音乐扩展]    路径: 酒馆设置 → 自定义代码 → 添加到 </body> 前");
-  console.log("[音乐扩展]    或直接访问面板: /api/plugins/music/panel");
+  console.log("[音乐扩展] 悬浮球自动注入已启用");
   console.log("[音乐扩展] ================================");
 
   registerRoutes(app);
